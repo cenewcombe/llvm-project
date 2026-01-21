@@ -193,7 +193,7 @@ static constexpr IntrinsicHandler handlers[]{
      {{{"cptr", asValue}, {"fptr", asInquired}}},
      /*isElemental=*/false},
     {"c_f_strpointer",
-     &I::genCFStrpointer,
+     &I::genCFStrPointer,
      {{{"cstrptr_or_cstrarray", asValue},
        {"fstrptr", asInquired},
        {"nchars", asValue, handleDynamicOptional}}},
@@ -3252,7 +3252,7 @@ void IntrinsicLibrary::genCFProcPointer(
 }
 
 // C_F_STRPOINTER
-void IntrinsicLibrary::genCFStrpointer(
+void IntrinsicLibrary::genCFStrPointer(
     llvm::ArrayRef<fir::ExtendedValue> args) {
   assert(args.size() == 3);
 
