@@ -298,6 +298,13 @@ struct LogicalConstantVistor : public evaluate::Traverse<LogicalConstantVistor,
       }
     }
   }
+
+  template <typename T>
+  Result operator()(const evaluate::ConditionalExpr<T> &) const {
+    // A conditional expression is not treated as a constant logical value.
+    // (If folding were implemented, it would be replaced by Constant<T>.)
+    return std::nullopt;
+  }
 };
 } // namespace
 
@@ -389,6 +396,25 @@ struct DesignatorCollector : public evaluate::Traverse<DesignatorCollector,
     }};
     (moveAppend(v, std::move(results)), ...);
     return v;
+  }
+
+  template <typename T>
+  Result operator()(const evaluate::ConditionalExpr<T> &x) const {
+    // Collect designators from all conditions and values
+    Result result;
+    for (const auto &cond : x.conditions()) {
+      Result condResult = (*this)(cond);
+      for (auto &s : condResult) {
+        result.push_back(std::move(s));
+      }
+    }
+    for (const auto &val : x.values()) {
+      Result valResult = (*this)(val);
+      for (auto &s : valResult) {
+        result.push_back(std::move(s));
+      }
+    }
+    return result;
   }
 };
 
