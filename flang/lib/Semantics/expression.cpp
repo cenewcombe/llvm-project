@@ -3867,6 +3867,134 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::Expr::PercentLoc &x) {
   return MakeFunctionRef(loc, ActualArguments{std::move(*arg)});
 }
 
+MaybeExpr ExpressionAnalyzer::Analyze(const parser::ConditionalExpr &x) {
+  // TODO !!! This implementation is currently incomplete !!!
+  // TODO: make sure const is used throughout and check other llvm style issues (auto)
+  // Analyze all branches (condition ? value pairs)
+  const auto &branches{std::get<std::list<parser::ConditionalExpr::Branch>>(x.t)};
+  const auto &elseExpr{std::get<common::Indirection<parser::Expr>>(x.t)};
+
+  std::vector<MaybeExpr> conditions;
+  std::vector<MaybeExpr> values;
+
+  // Analyze each branch: condition and its value
+  for (const auto &branch : branches) {
+    const auto &condition{std::get<parser::ScalarLogicalExpr>(branch.t)};
+    const auto &value{std::get<common::Indirection<parser::Expr>>(branch.t)};
+
+    if (MaybeExpr condExpr{Analyze(condition.thing.thing.value())}) {
+      // Ensure condition is scalar logical
+      if (const auto *logExpr{std::get_if<Expr<SomeLogical>>(&condExpr->u)}) {
+        conditions.push_back(std::move(condExpr));
+      } else {
+        Say("Condition in conditional expression must be LOGICAL; have %s"_err_en_US,
+            condExpr->GetType().value().AsFortran());
+        return std::nullopt;
+      }
+    } else {
+      return std::nullopt;
+    }
+
+    if (MaybeExpr valExpr{Analyze(value.value())}) {
+      values.push_back(std::move(valExpr));
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  // Analyze else expression
+  MaybeExpr elseValue{Analyze(elseExpr.value())};
+  if (!elseValue) {
+    return std::nullopt;
+  }
+  values.push_back(std::move(elseValue));
+
+  // C1004: All expr shall have the same declared type, kind type parameters, and rank
+  if (values.empty()) {
+    return std::nullopt;
+  }
+
+  const std::optional<DynamicType> resultType{values[0]->GetType()};
+  if (!resultType) {
+    Say("Cannot determine type of conditional expression"_err_en_US);
+    return std::nullopt;
+  }
+
+  // Check that all values have the exact same type and kind (no promotion allowed)
+  const TypeCategory resultCategory{resultType->category()};
+  const int resultKind{resultType->kind()};
+  const int resultRank{values[0]->Rank()};
+  const auto end{values.end()};
+  for (auto iter = values.begin() + 1; iter != end; ++iter) {
+    const MaybeExpr &value = *iter;
+    const std::optional<DynamicType> valueType{value->GetType()};
+    if (!valueType) {
+      Say("Cannot determine type of value expression in conditional"_err_en_US);
+      return std::nullopt;
+    }
+
+    const TypeCategory valueCategory{valueType->category()};
+    const int valueKind{valueType->kind()};
+    
+    // Check exact type match (category and kind)
+    if (resultCategory != valueCategory || resultKind != valueKind) {
+      Say("All values in conditional expression must have the same type and kind; have %s and %s"_err_en_US,
+          resultType->AsFortran(), valueType->AsFortran());
+      return std::nullopt;
+    }
+    
+    // For derived types, check they are the exact same type (not just compatible)
+    // C1004 requires "same declared type", which means exact type equality,
+    // not type extension compatibility
+    if (resultCategory() == TypeCategory::Derived) {
+      if (resultType->GetDerivedTypeSpec().typeSymbol().name() !=
+          valueType->GetDerivedTypeSpec().typeSymbol().name()) {
+        Say("All values in conditional expression must be the same derived type; have %s and %s"_err_en_US,
+            resultType->AsFortran(), valueType->AsFortran());
+        return std::nullopt;
+      }
+    }
+    
+    // Check rank matches
+    const int valueRank{value->Rank()};
+    if (resultRank != valueRank) {
+      Say("All values in conditional expression must have the same rank; have rank %d and %d"_err_en_US,
+          resultRank, valueRank);
+      return std::nullopt;
+    }
+  }
+
+  // Build the conditional expression
+  // A fully general ConditionalExpr<T> needs to be added to expression.h
+  // as a new Operation<> type that can be included in Expr<T>::u variants.
+  //
+  // The structure would be:
+  //   template <typename T>
+  //   class ConditionalExpr {
+  //     std::vector<Expr<SomeLogical>> conditions_;
+  //     std::vector<Expr<T>> values_;  // one more value than conditions (includes else)
+  //   };
+  //
+  // For now, we provide a placeholder that preserves type information.
+  // This allows parsing and semantic analysis to complete, deferring full
+  // expression construction until the evaluate library is extended.
+
+  return common::visit(
+      [&](auto &&firstVal) -> MaybeExpr {
+        using T = ResultType<decltype(firstVal)>;
+        
+        // Construct and return the first value for now
+        // This is type-correct but lacks the conditional logic
+        // TODO: Replace with ConditionalExpr<T>{conditions, values} once added to expression.h
+        Say("Conditional expressions parsed and type-checked successfully, "
+            "but full evaluation requires extension of the evaluate:: library. "
+            "Conditional control flow will need to be lowered to FIR."_warn_en_US);
+        
+        return MaybeExpr{Expr<T>{std::move(firstVal)}};
+      },
+      std::move(values[0]->u));
+}
+
 MaybeExpr ExpressionAnalyzer::Analyze(const parser::Expr::DefinedUnary &x) {
   const auto &name{std::get<parser::DefinedOpName>(x.t).v};
   ArgumentAnalyzer analyzer{*this, name.source};

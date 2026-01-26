@@ -1673,6 +1673,19 @@ struct ImageSelector {
   std::tuple<std::list<Cosubscript>, std::list<ImageSelectorSpec>> t;
 };
 
+// R1002 conditional-expr -> 
+//   ( scalar-logical-expr ? expr 
+//     [ : scalar-logical-expr ? expr ]... 
+//     : expr )
+struct ConditionalExpr {
+  TUPLE_CLASS_BOILERPLATE(ConditionalExpr);
+  struct Branch {
+    TUPLE_CLASS_BOILERPLATE(Branch);
+    std::tuple<ScalarLogicalExpr, common::Indirection<Expr>> t;
+  };
+  std::tuple<std::list<Branch>, common::Indirection<Expr>> t;
+};
+
 // R1001 - R1022 expressions
 struct Expr {
   UNION_CLASS_BOILERPLATE(Expr);
