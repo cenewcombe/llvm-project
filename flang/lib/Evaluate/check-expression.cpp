@@ -90,6 +90,21 @@ public:
             (IsIntentIn(sym) && !IsOptional(sym) &&
                 !sym.attrs().test(semantics::Attr::VALUE)));
   }
+  template <typename T>
+  bool operator()(const ConditionalExpr<T> &conditional) const {
+    // A conditional expression is constant if all its conditions and values are constant
+    for (const auto &condition : conditional.conditions()) {
+      if (!(*this)(condition)) {
+        return false;
+      }
+    }
+    for (const auto &value : conditional.values()) {
+      if (!(*this)(value)) {
+        return false;
+      }
+    }
+    return true;
+  }
 
 private:
   bool IsConstantStructureConstructorComponent(
@@ -197,6 +212,20 @@ struct IsActuallyConstantHelper {
   template <typename T> bool operator()(const Constant<T> &) { return true; }
   template <typename T> bool operator()(const Parentheses<T> &x) {
     return (*this)(x.left());
+  }
+  template <typename T> bool operator()(const ConditionalExpr<T> &x) {
+    // A conditional expression is actually constant if all its parts are
+    for (const auto &condition : x.conditions()) {
+      if (!(*this)(condition)) {
+        return false;
+      }
+    }
+    for (const auto &value : x.values()) {
+      if (!(*this)(value)) {
+        return false;
+      }
+    }
+    return true;
   }
   template <typename T> bool operator()(const Expr<T> &x) {
     return common::visit([=](const auto &y) { return (*this)(y); }, x.u);
@@ -320,6 +349,10 @@ public:
   bool operator()(const StructureConstructor &) const { return false; }
   template <typename D, typename R, typename... O>
   bool operator()(const Operation<D, R, O...> &) const {
+    return false;
+  }
+  template <typename T> bool operator()(const ConditionalExpr<T> &) const {
+    // A conditional expression cannot be an initial data target
     return false;
   }
   template <typename T> bool operator()(const Parentheses<T> &x) const {
@@ -455,6 +488,16 @@ public:
     }
     return (*this)(x.left());
   }
+  template <typename T>
+  bool operator()(const ConditionalExpr<T> &x) const {
+    // Check all values in the conditional expression for suspicious literals
+    for (const auto &value : x.values()) {
+      if ((*this)(value)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
 private:
   int kind_;
@@ -492,6 +535,14 @@ public:
   bool operator()(const Constant<Type<TypeCategory::Real, KIND>> &x) const {
     auto &mut{const_cast<Type<TypeCategory::Real, KIND> &>(x.result())};
     mut.set_isFromInexactLiteralConversion(false);
+    return false;
+  }
+  template <typename T>
+  bool operator()(const ConditionalExpr<T> &x) const {
+    // Clear flags in all values of the conditional expression
+    for (const auto &value : x.values()) {
+      (*this)(value);
+    }
     return false;
   }
 };
@@ -752,6 +803,22 @@ public:
       return (*this)(inq.base());
     } else if (!IsConstantExpr(inq)) {
       return "non-constant type parameter inquiry not allowed for local object";
+    }
+    return std::nullopt;
+  }
+
+  template <typename T> Result operator()(const ConditionalExpr<T> &x) const {
+    // Check all conditions
+    for (const auto &cond : x.conditions()) {
+      if (auto result{(*this)(cond)}) {
+        return result;
+      }
+    }
+    // Check all values
+    for (const auto &val : x.values()) {
+      if (auto result{(*this)(val)}) {
+        return result;
+      }
     }
     return std::nullopt;
   }
@@ -1151,6 +1218,21 @@ public:
 
   Result operator()(const NullPointer &) const { return true; }
 
+  template <typename T> Result operator()(const ConditionalExpr<T> &x) {
+    // A conditional expression is contiguous if all its values are contiguous
+    for (const auto &cond : x.conditions()) {
+      if (auto result{(*this)(cond)}; result && !*result) {
+        return false;
+      }
+    }
+    for (const auto &val : x.values()) {
+      if (auto result{(*this)(val)}; !result || !*result) {
+        return result;
+      }
+    }
+    return true;
+  }
+
 private:
   // Returns "true" for a provably empty or simply contiguous array section;
   // return "false" for a provably nonempty discontiguous section or for use
@@ -1344,6 +1426,21 @@ struct IsErrorExprHelper : public AnyTraverse<IsErrorExprHelper, bool> {
   bool operator()(const SpecificIntrinsic &x) {
     return x.name == IntrinsicProcTable::InvalidName;
   }
+
+  template <typename T> bool operator()(const ConditionalExpr<T> &x) {
+    // Check if any condition or value contains an error
+    for (const auto &cond : x.conditions()) {
+      if ((*this)(cond)) {
+        return true;
+      }
+    }
+    for (const auto &val : x.values()) {
+      if ((*this)(val)) {
+        return true;
+      }
+    }
+    return false;
+  }
 };
 
 template <typename A> bool IsErrorExpr(const A &x) {
@@ -1454,6 +1551,21 @@ public:
               "Statement function '%s' should not pass an array argument that is not a whole array"_port_en_US,
               sf_.name()});
         }
+      }
+    }
+    return std::nullopt;
+  }
+
+  template <typename T> Result operator()(const ConditionalExpr<T> &x) {
+    // Check all conditions and values for statement function restrictions
+    for (const auto &cond : x.conditions()) {
+      if (auto result{(*this)(cond)}) {
+        return result;
+      }
+    }
+    for (const auto &val : x.values()) {
+      if (auto result{(*this)(val)}) {
+        return result;
       }
     }
     return std::nullopt;

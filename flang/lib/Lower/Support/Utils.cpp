@@ -157,6 +157,18 @@ public:
            static_cast<unsigned>(TC) + static_cast<unsigned>(KIND) +
            static_cast<unsigned>(x.ordering) * 7u;
   }
+  template <typename T>
+  static unsigned getHashValue(const Fortran::evaluate::ConditionalExpr<T> &x) {
+    // Hash all conditions and values
+    unsigned hash = 151u; // Prime base for conditionals
+    for (const auto &cond : x.conditions()) {
+      hash = hash * 157u - getHashValue(cond);
+    }
+    for (const auto &val : x.values()) {
+      hash = hash * 163u + getHashValue(val);
+    }
+    return hash;
+  }
   template <Fortran::common::TypeCategory TC, int KIND>
   static unsigned getHashValue(
       const Fortran::evaluate::RealToIntPower<Fortran::evaluate::Type<TC, KIND>>
@@ -414,6 +426,26 @@ public:
   static bool isEqual(const Fortran::evaluate::Extremum<A> &x,
                       const Fortran::evaluate::Extremum<A> &y) {
     return isBinaryEqual(x, y);
+  }
+  template <typename T>
+  static bool isEqual(const Fortran::evaluate::ConditionalExpr<T> &x,
+                      const Fortran::evaluate::ConditionalExpr<T> &y) {
+    // Compare all conditions and values
+    if (x.conditions().size() != y.conditions().size() ||
+        x.values().size() != y.values().size()) {
+      return false;
+    }
+    for (size_t i = 0; i < x.conditions().size(); ++i) {
+      if (!isEqual(x.conditions()[i], y.conditions()[i])) {
+        return false;
+      }
+    }
+    for (size_t i = 0; i < x.values().size(); ++i) {
+      if (!isEqual(x.values()[i], y.values()[i])) {
+        return false;
+      }
+    }
+    return true;
   }
   template <typename A>
   static bool isEqual(const Fortran::evaluate::RealToIntPower<A> &x,

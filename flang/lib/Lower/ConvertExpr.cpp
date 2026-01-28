@@ -1209,6 +1209,15 @@ public:
     llvm_unreachable("unknown ordering");
   }
 
+  /// Conditional expression (Fortran 2023)
+  template <typename T>
+  ExtValue genval(const Fortran::evaluate::ConditionalExpr<T> &cond) {
+    // TODO: Implement proper FIR lowering for conditional expressions
+    // For now, generate a placeholder that will cause a runtime error
+    mlir::Location loc = getLoc();
+    fir::emitFatalError(loc, "conditional expressions not yet implemented in FIR lowering");
+  }
+
   // Change the dynamic length information without actually changing the
   // underlying character storage.
   fir::ExtendedValue
@@ -5166,6 +5175,14 @@ private:
       return fir::substBase(val, newBase);
     };
   }
+
+  template <typename T>
+  CC genarr(const Fortran::evaluate::ConditionalExpr<T> &x) {
+    // TODO: Implement proper array conditional expression lowering
+    mlir::Location loc = getLoc();
+    fir::emitFatalError(loc, "array conditional expressions not yet implemented in FIR lowering");
+  }
+
   template <Fortran::common::TypeCategory CAT, int KIND>
   CC genarrIntNeg(
       const Fortran::evaluate::Expr<Fortran::evaluate::Type<CAT, KIND>> &left) {

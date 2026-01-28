@@ -97,8 +97,9 @@ constexpr auto level1Expr{sourced(
 //     [ : scalar-logical-expr ? expr ]... 
 //     : expr )
 TYPE_PARSER(parenthesized(construct<ConditionalExpr>(
-    nonemptyList(construct<ConditionalExpr::Branch>(
-        Parser<ScalarLogicalExpr>{} / "?", indirect(expr)), ":"),
+    nonemptyList("expected conditional expression branch"_err_en_US,
+        construct<ConditionalExpr::Branch>(
+            scalarLogicalExpr / "?", indirect(expr)) / ":"),
     ":" >> indirect(expr))))
 
 // R1004 mult-operand -> level-1-expr [power-op mult-operand]

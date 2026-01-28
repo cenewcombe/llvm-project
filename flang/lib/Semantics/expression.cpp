@@ -3884,7 +3884,7 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::ConditionalExpr &x) {
 
     if (MaybeExpr condExpr{Analyze(condition.thing.thing.value())}) {
       // Ensure condition is scalar logical
-      if (const auto *logExpr{std::get_if<Expr<SomeLogical>>(&condExpr->u)}) {
+      if (std::get_if<Expr<SomeLogical>>(&condExpr->u)) {
         conditions.push_back(std::move(condExpr));
       } else {
         Say("Condition in conditional expression must be LOGICAL; have %s"_err_en_US,
@@ -3908,6 +3908,10 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::ConditionalExpr &x) {
     return std::nullopt;
   }
   values.push_back(std::move(elseValue));
+
+  // TODO: R1527 allows .NIL. as a consequent - need to detect and handle .NIL. values
+  // TODO: Find first non-NIL value for type determination instead of always using values[0]
+  // TODO: Handle the edge case where all values are .NIL. (error or context-dependent typing)
 
   // C1004: All expr shall have the same declared type, kind type parameters, and rank
   if (values.empty()) {
@@ -3933,6 +3937,7 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::ConditionalExpr &x) {
       return std::nullopt;
     }
 
+    // TODO: Skip type/kind/rank checking for .NIL. values - they are compatible with any type
     const TypeCategory valueCategory{valueType->category()};
     const int valueKind{valueType->kind()};
     
@@ -3946,7 +3951,7 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::ConditionalExpr &x) {
     // For derived types, check they are the exact same type (not just compatible)
     // C1004 requires "same declared type", which means exact type equality,
     // not type extension compatibility
-    if (resultCategory() == TypeCategory::Derived) {
+    if (resultCategory == TypeCategory::Derived) {
       if (resultType->GetDerivedTypeSpec().typeSymbol().name() !=
           valueType->GetDerivedTypeSpec().typeSymbol().name()) {
         Say("All values in conditional expression must be the same derived type; have %s and %s"_err_en_US,
@@ -3965,32 +3970,96 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::ConditionalExpr &x) {
   }
 
   // Build the conditional expression
-  // A fully general ConditionalExpr<T> needs to be added to expression.h
-  // as a new Operation<> type that can be included in Expr<T>::u variants.
-  //
-  // The structure would be:
-  //   template <typename T>
-  //   class ConditionalExpr {
-  //     std::vector<Expr<SomeLogical>> conditions_;
-  //     std::vector<Expr<T>> values_;  // one more value than conditions (includes else)
-  //   };
-  //
-  // For now, we provide a placeholder that preserves type information.
-  // This allows parsing and semantic analysis to complete, deferring full
-  // expression construction until the evaluate library is extended.
-
+  // All semantic checks (C1004) have passed. Now construct the ConditionalExpr<T>
+  // with the analyzed conditions and values.
+  // TODO: Convert .NIL. values to the appropriate result type
+  // TODO: Consider adding a parallel vector or optional wrapper to track which values are .NIL.
+  
+  // We need to visit the specific typed expression within the category-level expression
   return common::visit(
-      [&](auto &&firstVal) -> MaybeExpr {
-        using T = ResultType<decltype(firstVal)>;
-        
-        // Construct and return the first value for now
-        // This is type-correct but lacks the conditional logic
-        // TODO: Replace with ConditionalExpr<T>{conditions, values} once added to expression.h
-        Say("Conditional expressions parsed and type-checked successfully, "
-            "but full evaluation requires extension of the evaluate:: library. "
-            "Conditional control flow will need to be lowered to FIR."_warn_en_US);
-        
-        return MaybeExpr{Expr<T>{std::move(firstVal)}};
+      common::visitors{
+          [&](const BOZLiteralConstant &) -> MaybeExpr {
+            Say("BOZ literals not allowed in conditional expressions"_err_en_US);
+            return std::nullopt;
+          },
+          [&](Expr<SomeDerived> &derivedExpr) -> MaybeExpr {
+            // SomeDerived is special - it's already the specific type
+            std::vector<Expr<SomeLogical>> typedConditions;
+            typedConditions.reserve(conditions.size());
+            for (auto &cond : conditions) {
+              if (auto *logicalExpr{std::get_if<Expr<SomeLogical>>(&cond->u)}) {
+                typedConditions.emplace_back(std::move(*logicalExpr));
+              } else {
+                Say("Internal error: condition is not logical"_err_en_US);
+                return std::nullopt;
+              }
+            }
+
+            std::vector<Expr<SomeDerived>> typedValues;
+            typedValues.reserve(values.size());
+            for (auto &val : values) {
+              if (auto *derivedVal{std::get_if<Expr<SomeDerived>>(&val->u)}) {
+                typedValues.emplace_back(std::move(*derivedVal));
+              } else {
+                Say("Internal error: value has incorrect type"_err_en_US);
+                return std::nullopt;
+              }
+            }
+
+            return AsGenericExpr(Expr<SomeDerived>{evaluate::ConditionalExpr<SomeDerived>{
+                std::move(typedConditions), std::move(typedValues)}});
+          },
+          [&](auto &&categoryExpr) -> MaybeExpr {
+            using CategoryType = std::decay_t<decltype(categoryExpr)>;
+            if constexpr (common::HasMember<CategoryType, TypelessExpression>) {
+              Say("Typeless expressions not allowed in conditional expressions"_err_en_US);
+              return std::nullopt;
+            } else if constexpr (std::is_same_v<CategoryType, Expr<SomeDerived>>) {
+              // SomeDerived is handled separately
+              Say("Internal error: SomeDerived should not reach generic handler"_err_en_US);
+              return std::nullopt;
+            } else {
+              // For category-level types (SomeInteger, SomeReal, etc.), need to visit specific types
+              return common::visit(
+                  [&](auto &&specificExpr) -> MaybeExpr {
+                    using SpecificType = std::decay_t<decltype(specificExpr)>;
+                    using T = typename SpecificType::Result;
+                    
+                    std::vector<Expr<SomeLogical>> typedConditions;
+                    typedConditions.reserve(conditions.size());
+                    for (auto &cond : conditions) {
+                      if (auto *logicalExpr{std::get_if<Expr<SomeLogical>>(&cond->u)}) {
+                        typedConditions.emplace_back(std::move(*logicalExpr));
+                      } else {
+                        Say("Internal error: condition is not logical"_err_en_US);
+                        return std::nullopt;
+                      }
+                    }
+
+                    std::vector<Expr<T>> typedValues;
+                    typedValues.reserve(values.size());
+                    for (auto &val : values) {
+                      // Extract the category expression, then the specific type
+                      if (auto *catExpr{std::get_if<CategoryType>(&val->u)}) {
+                        if (auto *specificVal{std::get_if<Expr<T>>(&catExpr->u)}) {
+                          typedValues.emplace_back(std::move(*specificVal));
+                        } else {
+                          Say("Internal error: value has mismatched specific type"_err_en_US);
+                          return std::nullopt;
+                        }
+                      } else {
+                        Say("Internal error: value has incorrect category type"_err_en_US);
+                        return std::nullopt;
+                      }
+                    }
+
+                    return AsGenericExpr(
+                        CategoryType{Expr<T>{evaluate::ConditionalExpr<T>{
+                            std::move(typedConditions), std::move(typedValues)}}});
+                  },
+                  categoryExpr.u);
+            }
+          },
       },
       std::move(values[0]->u));
 }

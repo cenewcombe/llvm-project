@@ -1784,11 +1784,12 @@ struct Expr {
   CharBlock source;
 
   std::variant<common::Indirection<CharLiteralConstantSubstring>,
-      LiteralConstant, common::Indirection<Designator>, ArrayConstructor,
-      StructureConstructor, common::Indirection<FunctionReference>, Parentheses,
-      UnaryPlus, Negate, NOT, PercentLoc, DefinedUnary, Power, Multiply, Divide,
-      Add, Subtract, Concat, LT, LE, EQ, NE, GE, GT, AND, OR, EQV, NEQV,
-      DefinedBinary, ComplexConstructor, common::Indirection<SubstringInquiry>>
+      LiteralConstant, ConditionalExpr, common::Indirection<Designator>,
+      ArrayConstructor, StructureConstructor,
+      common::Indirection<FunctionReference>, Parentheses, UnaryPlus, Negate,
+      NOT, PercentLoc, DefinedUnary, Power, Multiply, Divide, Add, Subtract,
+      Concat, LT, LE, EQ, NE, GE, GT, AND, OR, EQV, NEQV, DefinedBinary,
+      ComplexConstructor, common::Indirection<SubstringInquiry>>
       u;
 };
 

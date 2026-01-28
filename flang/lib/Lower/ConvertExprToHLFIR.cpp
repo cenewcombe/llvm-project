@@ -1821,6 +1821,14 @@ private:
     llvm_unreachable("unknown descriptor inquiry");
   }
 
+  template <typename T>
+  hlfir::EntityWithAttributes
+  gen(const Fortran::evaluate::ConditionalExpr<T> &cond) {
+    // TODO: Implement proper HLFIR lowering for conditional expressions
+    mlir::Location loc = getLoc();
+    fir::emitFatalError(loc, "conditional expressions not yet implemented in HLFIR lowering");
+  }
+
   hlfir::EntityWithAttributes
   gen(const Fortran::evaluate::ImpliedDoIndex &var) {
     mlir::Value value = symMap.lookupImpliedDo(toStringRef(var.name));

@@ -189,6 +189,15 @@ public:
   Result operator()(const ArrayConstructor<T> &aconst) const {
     return Shape{GetArrayConstructorExtent(aconst)};
   }
+  template <typename T>
+  Result operator()(const ConditionalExpr<T> &conditional) const {
+    // All values in a conditional expression must have the same shape (C1004)
+    // so we can return the shape of any value expression
+    if (!conditional.values().empty()) {
+      return (*this)(conditional.values().front());
+    }
+    return ScalarShape();
+  }
   template <typename D, typename R, typename LO, typename RO>
   Result operator()(const Operation<D, R, LO, RO> &operation) const {
     if (int rr{operation.right().Rank()}; rr > 0) {

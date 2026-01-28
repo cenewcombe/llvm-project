@@ -227,6 +227,403 @@ bool ContainsAnyImpliedDoIndex(const ExtentExpr &expr) {
     MyVisitor() : Base{*this} {}
     using Base::operator();
     bool operator()(const ImpliedDoIndex &) { return true; }
+    // Integer kinds
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Integer, 1>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Integer, 2>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Integer, 4>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<SubscriptInteger> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Integer, 16>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    // Logical kinds
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Logical, 1>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Logical, 2>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Logical, 4>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Logical, 8>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    // Real kinds
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Real, 2>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Real, 3>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Real, 4>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Real, 8>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Real, 10>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Real, 16>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    // Complex kinds
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Complex, 2>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Complex, 3>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Complex, 4>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Complex, 8>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Complex, 10>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Complex, 16>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    // Unsigned kinds
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Unsigned, 1>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Unsigned, 2>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Unsigned, 4>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Unsigned, 8>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Unsigned, 16>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    // Character kind
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Character, 1>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Character, 2>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    bool operator()(const ConditionalExpr<Type<TypeCategory::Character, 4>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    // Derived types
+    bool operator()(const ConditionalExpr<SomeKind<TypeCategory::Derived>> &x) {
+      for (const auto &cond : x.conditions()) {
+        if ((*this)(cond)) {
+          return true;
+        }
+      }
+      for (const auto &val : x.values()) {
+        if ((*this)(val)) {
+          return true;
+        }
+      }
+      return false;
+    }
   };
   return MyVisitor{}(expr);
 }
