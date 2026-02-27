@@ -302,7 +302,6 @@ struct LogicalConstantVistor : public evaluate::Traverse<LogicalConstantVistor,
   template <typename T>
   Result operator()(const evaluate::ConditionalExpr<T> &) const {
     // A conditional expression is not treated as a constant logical value.
-    // (If folding were implemented, it would be replaced by Constant<T>.)
     return std::nullopt;
   }
 };

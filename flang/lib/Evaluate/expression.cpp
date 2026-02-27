@@ -65,8 +65,8 @@ Expr<Type<TypeCategory::Character, KIND>>::LEN() const {
             return std::nullopt;
           },
           [](const ConditionalExpr<Result> &c) -> T {
-            // Return max of all value lengths (shorter values are padded at
-            // runtime)
+            // Return max of all branch lengths. If all have same constant
+            // length, max folds to constant; otherwise signals deferred-length.
             std::optional<Expr<SubscriptInteger>> maxLen;
             for (const auto &value : c.values()) {
               if (auto len{value.LEN()}) {

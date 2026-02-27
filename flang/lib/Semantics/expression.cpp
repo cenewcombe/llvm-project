@@ -5342,52 +5342,6 @@ void ArgumentAnalyzer::Dump(llvm::raw_ostream &os) {
   }
 }
 
-// Type trait to detect ConditionalExpr template instantiations
-template <typename> struct IsConditionalExprType : std::false_type {};
-template <typename T>
-struct IsConditionalExprType<ConditionalExpr<T>> : std::true_type {};
-
-// Type trait to detect Expr<T> template instantiations
-template <typename> struct IsExprType : std::false_type {};
-template <typename T> struct IsExprType<Expr<T>> : std::true_type {};
-
-// Helper to detect if an expression is a conditional expression
-static bool IsConditionalExpr(const Expr<SomeType> &expr) {
-  return common::visit(
-      common::visitors{
-          [](const BOZLiteralConstant &) { return false; },
-          [](const NullPointer &) { return false; },
-          [](const ProcedureDesignator &) { return false; },
-          [](const ProcedureRef &) { return false; },
-          [](const auto &catExpr) {
-            using CategoryType = std::decay_t<decltype(catExpr)>;
-            if constexpr (common::HasMember<CategoryType, TypelessExpression>) {
-              return false;
-            } else {
-              return common::visit(
-                  [](const auto &specificExpr) {
-                    using SpecificType = std::decay_t<decltype(specificExpr)>;
-                    // For SomeDerived, the variant directly contains
-                    // ConditionalExpr
-                    if constexpr (IsConditionalExprType<SpecificType>::value) {
-                      return true;
-                    } else if constexpr (IsExprType<SpecificType>::value) {
-                      // For other types, need to check inside
-                      // Expr<Type<...>>::u
-                      using T = typename SpecificType::Result;
-                      return std::holds_alternative<ConditionalExpr<T>>(
-                          specificExpr.u);
-                    } else {
-                      return false;
-                    }
-                  },
-                  catExpr.u);
-            }
-          },
-      },
-      expr.u);
-}
-
 std::optional<ActualArgument> ArgumentAnalyzer::AnalyzeExpr(
     const parser::Expr &expr) {
   source_.ExtendToCover(expr.source);
@@ -5400,12 +5354,13 @@ std::optional<ActualArgument> ArgumentAnalyzer::AnalyzeExpr(
     }
     context_.SayAt(expr.source,
         "TYPE(*) dummy argument may only be used as an actual argument"_err_en_US);
+  } else if (isProcedureCall_ &&
+      std::holds_alternative<parser::ConditionalExpr>(expr.u)) {
+    // Check parse tree before analysis to avoid wasted work
+    context_.SayAt(expr.source,
+        "Conditional expressions are not yet supported as actual arguments"_err_en_US);
+    return std::nullopt;
   } else if (MaybeExpr argExpr{AnalyzeExprOrWholeAssumedSizeArray(expr)}) {
-    if (isProcedureCall_ && IsConditionalExpr(*argExpr)) {
-      context_.SayAt(expr.source,
-          "Conditional expressions are not yet supported as actual arguments"_err_en_US);
-      return std::nullopt;
-    }
     if (isProcedureCall_ || !IsProcedureDesignator(*argExpr)) {
       // Pad Hollerith actual argument with spaces up to a multiple of 8
       // bytes, in case the data are interpreted as double precision

@@ -191,10 +191,11 @@ public:
   }
   template <typename T>
   Result operator()(const ConditionalExpr<T> &conditional) const {
-    // All values in a conditional expression must have the same shape (C1004)
-    // so we can return the shape of any value expression
+    // Per F2023 10.1.4(7), the shape is determined by the selected branch,
+    // so return unknown extents for the rank.
     if (!conditional.values().empty()) {
-      return (*this)(conditional.values().front());
+      int rank{conditional.values().front().Rank()};
+      return Shape(rank, std::nullopt);
     }
     return ScalarShape();
   }
