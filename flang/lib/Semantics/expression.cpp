@@ -3939,8 +3939,8 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::ConditionalExpr &x) {
   CHECK(values.size() == conditions.size() + 1 &&
       "values must have exactly one more element than conditions");
 
-  // C1004: Each expr shall have the same declared type, kind type parameters,
-  // and rank Reject typeless expressions (BOZ and NULL)
+  // F2023 C1004: Each expr shall have the same declared type, kind type
+  // parameters, and rank Reject typeless expressions (BOZ and NULL)
   for (const auto &value : values) {
     // BOZ arrays are auto-converted in array constructors, but bare BOZ are not
     // allowed
