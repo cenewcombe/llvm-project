@@ -1914,6 +1914,13 @@ private:
                                   /*keepLhsLengthIfRealloc=*/false,
                                   /*temporary_lhs=*/true);
         });
+    fir::FirOpBuilder *const bldr{&builder};
+    getStmtCtx().attachCleanup([=]() {
+      fir::factory::genFreememIfAllocated(
+          *bldr, loc,
+          fir::MutableBoxValue{tempStorage, /*lenParams=*/{},
+                               fir::MutableProperties{}});
+    });
     return temp;
   }
 
