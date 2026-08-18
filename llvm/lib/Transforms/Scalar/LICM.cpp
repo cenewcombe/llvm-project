@@ -66,6 +66,7 @@
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -1771,6 +1772,46 @@ static bool sink(Instruction &I, LoopInfo *LI, DominatorTree *DT,
   return Changed;
 }
 
+/// Return true if I's !tbaa tag is still correct after I is hoisted above a
+/// condition that guarded it.
+///
+/// Speculating an access normally has to drop !tbaa because the guard may have
+/// been what established the type at that location. That requires storage
+/// whose type varies over its lifetime, so it cannot apply to a whole-object
+/// access to a global of non-aggregate type -- such an object has one type for
+/// its entire lifetime.
+/// TODO: Expand to cover allocas, array globals, and other fixed-type cases.
+/// TODO: other passes that speculate loads drop !tbaa for the same reason, and
+/// the same predicate applies there; left as a follow-up.
+static bool canPreserveTBAAAcrossSpeculation(const Instruction &I) {
+  // A store's !tbaa sets the effective type rather than merely asserting it.
+  const auto *LI = dyn_cast<LoadInst>(&I);
+  if (!LI)
+    return false;
+
+  MDNode *Tag = LI->getMetadata(LLVMContext::MD_tbaa);
+  if (!Tag || Tag->getNumOperands() < 3 || !Tag->getOperand(0))
+    return false;
+
+  // A base type that differs from the access type means the tag describes a
+  // field inside a larger object. Whole-object coverage is checked below.
+  if (Tag->getOperand(0) != Tag->getOperand(1))
+    return false;
+  auto *Offset = mdconst::dyn_extract<ConstantInt>(Tag->getOperand(2));
+  if (!Offset || !Offset->isZero())
+    return false;
+
+  const auto *GV =
+      dyn_cast<GlobalVariable>(getUnderlyingObject(LI->getPointerOperand()));
+  if (!GV)
+    return false;
+
+  // The load must cover the whole object. A partial access could be a union
+  // member or a reinterpretation of the object's storage.
+  return !LI->getType()->isAggregateType() &&
+         GV->getValueType() == LI->getType();
+}
+
 /// When an instruction is found to only use loop invariant operands that
 /// is safe to hoist, this instruction is called to do the dirty work.
 ///
@@ -1798,7 +1839,10 @@ static void hoist(Instruction &I, const DominatorTree *DT, const Loop *CurLoop,
       // time in isGuaranteedToExecute if we don't actually have anything to
       // drop.  It is a compile time optimization, not required for correctness.
       !SafetyInfo->isGuaranteedToExecute(I, DT, CurLoop)) {
-    I.dropUBImplyingAttrsAndMetadata();
+    SmallVector<unsigned, 1> Keep;
+    if (canPreserveTBAAAcrossSpeculation(I))
+      Keep.push_back(LLVMContext::MD_tbaa);
+    I.dropUBImplyingAttrsAndMetadata(Keep);
   }
 
   if (isa<PHINode>(I))
