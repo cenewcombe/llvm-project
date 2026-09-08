@@ -1074,12 +1074,17 @@ static void genCollapsedLoopNestBody(lower::AbstractConverter &converter,
   // emitting "after" intervening code (see below).
   llvm::SmallVector<const semantics::Symbol *> ivSyms;
 
+  // DO-construct evaluation of each collapsed level (index 0 = outermost).
+  // Used to recompute loop bounds in-region when they are host_eval args.
+  llvm::SmallVector<lower::pft::Evaluation *> doEvals;
+
   lower::pft::Evaluation *curEval = &outerEval;
   for (int i = 0; i < collapseValue - 1; ++i) {
     lower::pft::Evaluation *doEval = getNestedDoConstruct(*curEval);
     const semantics::Symbol *ivSym = getIterationVariableSymbol(*doEval);
     assert(ivSym && "expected iteration variable on collapsed DO loop");
     ivSyms.push_back(ivSym);
+    doEvals.push_back(doEval);
     LevelInfo level;
     bool pastDo = false;
     for (lower::pft::Evaluation &e : doEval->getNestedEvaluations()) {
@@ -1106,40 +1111,97 @@ static void genCollapsedLoopNestBody(lower::AbstractConverter &converter,
   }
   // DO-variable symbol of the innermost collapsed loop must be restored
   // inside enclosing "after" regions.
+  lower::pft::Evaluation *innermostDoEval = getNestedDoConstruct(*curEval);
   const semantics::Symbol *innermostIvSym =
-      getIterationVariableSymbol(*getNestedDoConstruct(*curEval));
+      getIterationVariableSymbol(*innermostDoEval);
   assert(innermostIvSym && "expected iteration variable on collapsed DO loop");
   ivSyms.push_back(innermostIvSym);
+  doEvals.push_back(innermostDoEval);
 
   // Build a guard condition: all induction variables from
   // startLevel..endLevel-1 equal their respective bound values.
   // For "before" guards (useLowerBound=true), compare iv == lb (first iter).
   // For "after" guards (useLowerBound=false), compare iv == last_iv.
-  const auto lbs = loopNestOp.getLoopLowerBounds();
-  const auto ubs = loopNestOp.getLoopUpperBounds();
-  const auto steps = loopNestOp.getLoopSteps();
+  // Mutable copies: inner-level bounds may be recomputed in-region below.
+  llvm::SmallVector<mlir::Value> lbs =
+      llvm::to_vector(loopNestOp.getLoopLowerBounds());
+  llvm::SmallVector<mlir::Value> ubs =
+      llvm::to_vector(loopNestOp.getLoopUpperBounds());
+  llvm::SmallVector<mlir::Value> steps =
+      llvm::to_vector(loopNestOp.getLoopSteps());
 
-  // The intervening-code guards and terminal-value restoration do arithmetic
-  // on the collapsed loop bounds. If those bounds are host_eval block arguments
-  // of an enclosing omp.target region, such uses are illegal, so diagnose
-  // instead of emitting IR the omp.target verifier rejects.
+  // Guard/terminal arithmetic on the bounds is illegal when they are the
+  // enclosing omp.target's host_eval block arguments, so recompute each inner
+  // loop's bounds in-region from its (rectangular) loop-control expressions.
   const bool hasInterveningCode = llvm::any_of(
       levels, [](const LevelInfo &l) { return l.hasInterveningCode(); });
-  if (hasInterveningCode) {
-    auto isHostEvalValue = [](mlir::Value v) {
-      auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(v);
-      if (!blockArg)
-        return false;
-      auto iface = mlir::dyn_cast<mlir::omp::BlockArgOpenMPOpInterface>(
-          blockArg.getOwner()->getParentOp());
-      return iface &&
-             llvm::is_contained(iface.getHostEvalBlockArgs(), blockArg);
+
+  auto isHostEvalValue = [](mlir::Value v) {
+    auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(v);
+    if (!blockArg)
+      return false;
+    auto iface = mlir::dyn_cast<mlir::omp::BlockArgOpenMPOpInterface>(
+        blockArg.getOwner()->getParentOp());
+    return iface && llvm::is_contained(iface.getHostEvalBlockArgs(), blockArg);
+  };
+
+  const bool boundsAreHostEval = llvm::any_of(lbs, isHostEvalValue) ||
+                                 llvm::any_of(ubs, isHostEvalValue) ||
+                                 llvm::any_of(steps, isHostEvalValue);
+
+  if (hasInterveningCode && boundsAreHostEval) {
+    // Recomputing is only correct if the expression is guaranteed to yield the
+    // same value as the host_eval operand the loop nest was built from. A bound
+    // referencing an enclosing collapsed induction variable is already rejected
+    // as non-rectangular by collectLoopRelatedInfo, and the canonical loop nest
+    // rules require the remaining operands to be invariant, so an impure call
+    // and a VOLATILE read are the only ways the recomputed value can differ.
+    auto checkReproducible = [&](const semantics::SomeExpr &expr) {
+      if (std::optional<std::string> impure =
+              evaluate::FindImpureCall(converter.getFoldingContext(), expr))
+        TODO(loc, "collapsed loop nest with intervening code whose "
+                  "host-evaluated loop bound calls impure procedure '" +
+                      *impure + "'");
+      for (const semantics::SymbolRef &ref : evaluate::CollectSymbols(expr))
+        if (ref->GetUltimate().attrs().test(semantics::Attr::VOLATILE))
+          TODO(loc, "collapsed loop nest with intervening code whose "
+                    "host-evaluated loop bound reads VOLATILE variable '" +
+                        ref->name().ToString() + "'");
     };
-    if (llvm::any_of(lbs, isHostEvalValue) ||
-        llvm::any_of(ubs, isHostEvalValue) ||
-        llvm::any_of(steps, isHostEvalValue))
-      TODO(loc, "collapsed loop nest with intervening code whose loop bounds "
-                "are evaluated on the host for an enclosing 'target' region");
+
+    // Only inner levels (1..collapseValue-1) feed the guards and terminal
+    // restoration; the outermost level's bounds are never used here.
+    for (int lvl = 1; lvl < collapseValue; ++lvl) {
+      const auto *doConstruct = doEvals[lvl]->getIf<parser::DoConstruct>();
+      assert(doConstruct && "expected DO construct for collapsed loop");
+      const auto &loopControl = doConstruct->GetLoopControl();
+      assert(loopControl && "expected loop control on collapsed DO loop");
+      const auto *bounds =
+          std::get_if<parser::LoopControl::Bounds>(&loopControl->u);
+      assert(bounds && "expected bounds for collapsed DO loop");
+
+      const semantics::SomeExpr &lbExpr = *semantics::GetExpr(bounds->Lower());
+      const semantics::SomeExpr &ubExpr = *semantics::GetExpr(bounds->Upper());
+      checkReproducible(lbExpr);
+      checkReproducible(ubExpr);
+
+      const mlir::Type ivTy = loopNestOp.getRegion().getArgument(lvl).getType();
+      lower::StatementContext stmtCtx;
+      mlir::Value lb = fir::getBase(converter.genExprValue(lbExpr, stmtCtx));
+      mlir::Value ub = fir::getBase(converter.genExprValue(ubExpr, stmtCtx));
+      mlir::Value step;
+      if (const auto &s = bounds->Step()) {
+        const semantics::SomeExpr &stepExpr = *semantics::GetExpr(s);
+        checkReproducible(stepExpr);
+        step = fir::getBase(converter.genExprValue(stepExpr, stmtCtx));
+      } else {
+        step = firOpBuilder.createIntegerConstant(loc,
+                                                  firOpBuilder.getI32Type(), 1);
+      }
+      lbs[lvl] = firOpBuilder.createConvert(loc, ivTy, lb);
+      ubs[lvl] = firOpBuilder.createConvert(loc, ivTy, ub);
+      steps[lvl] = firOpBuilder.createConvert(loc, ivTy, step);
+    }
   }
 
   // Last value the induction variable at \p lvl actually takes:
