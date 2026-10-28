@@ -22,8 +22,6 @@
 #include "flang/Optimizer/HLFIR/Passes.h"
 #include "flang/Optimizer/Support/AllocationPolicy.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/OpenACC/OpenACC.h"
-#include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -2483,28 +2481,6 @@ static bool isVolatileCharacter(hlfir::Entity var) {
   }
 }
 
-// TODO: share with the identical helpers in LoopTripCountVersioning.cpp.
-static bool isNoHostDeclareTarget(mlir::func::FuncOp func) {
-  auto iface = mlir::dyn_cast<mlir::omp::DeclareTargetInterface>(*func);
-  if (!iface)
-    return false;
-  mlir::omp::DeclareTargetAttr attr = iface.getDeclareTarget();
-  return attr &&
-         attr.getDeviceType() == mlir::omp::DeclareTargetDeviceType::nohost;
-}
-
-static bool runsOnDevice(mlir::Operation *op) {
-  if (cuf::isExecutingOnDevice(op) ||
-      op->getParentOfType<mlir::omp::TargetOp>())
-    return true;
-  auto func = op->getParentOfType<mlir::func::FuncOp>();
-  if (func && (cuf::isDeviceProcedure(func) || mlir::acc::isAccRoutine(func) ||
-               isNoHostDeclareTarget(func)))
-    return true;
-  auto offloadMod = op->getParentOfType<mlir::omp::OffloadModuleInterface>();
-  return offloadMod && offloadMod.getIsTargetDevice();
-}
-
 // Inline TRIM(x) of a character variable as a copy of x(1:LEN_TRIM(x)) into a
 // temporary placed by the allocation policy. Dynamic-size allocas are never
 // used: they are not reclaimed in CFG loops and are illegal on some devices.
@@ -2553,7 +2529,7 @@ public:
     bool useStack =
         !info.isDynamic && fir::shouldAllocateOnStack(info, policy,
                                                       /*stackBytesUsed=*/0);
-    if (!useStack && runsOnDevice(op))
+    if (!useStack && cuf::isDeviceCode(op))
       return rewriter.notifyMatchFailure(op, "heap temporary in device code");
 
     auto [exv, cleanup] = hlfir::translateToExtendedValue(loc, builder, str);

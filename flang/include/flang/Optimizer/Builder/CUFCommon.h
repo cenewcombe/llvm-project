@@ -85,6 +85,14 @@ bool isTypeDescriptorGlobal(fir::GlobalOp op);
 /// counts, since its body is compiled for the device as well.
 bool isDeviceProcedure(mlir::func::FuncOp funcOp);
 
+/// True when \p op is compiled for a device by any offload model: inside a
+/// device region (cuf.kernel, gpu.launch, acc compute region, omp.target), in
+/// a device procedure (cuf.proc_attr, acc routine, omp declare_target nohost),
+/// or in an omp.is_target_device module. Unlike isExecutingOnDevice,
+/// host_device procedures and unspecialized acc routines count: their device
+/// copy is split off later, so the one func.func here is compiled for both.
+bool isDeviceCode(mlir::Operation *op);
+
 /// The device code of a module, as gathered by collectDeviceCode.
 struct DeviceCodeSet {
   /// Procedures with a device proc attribute (see isDeviceProcedure).

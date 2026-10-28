@@ -18,6 +18,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
+#include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/SymbolTable.h"
 #include "llvm/ADT/StringSet.h"
 
@@ -224,6 +225,26 @@ bool cuf::isDeviceProcedure(mlir::func::FuncOp funcOp) {
     return false;
   }
   return false;
+}
+
+static bool isNoHostDeclareTarget(mlir::func::FuncOp func) {
+  auto iface = mlir::dyn_cast<mlir::omp::DeclareTargetInterface>(*func);
+  if (!iface)
+    return false;
+  mlir::omp::DeclareTargetAttr attr = iface.getDeclareTarget();
+  return attr &&
+         attr.getDeviceType() == mlir::omp::DeclareTargetDeviceType::nohost;
+}
+
+bool cuf::isDeviceCode(mlir::Operation *op) {
+  if (isExecutingOnDevice(op) || op->getParentOfType<mlir::omp::TargetOp>())
+    return true;
+  auto func = op->getParentOfType<mlir::func::FuncOp>();
+  if (func && (isDeviceProcedure(func) || mlir::acc::isAccRoutine(func) ||
+               isNoHostDeclareTarget(func)))
+    return true;
+  auto offloadMod = op->getParentOfType<mlir::omp::OffloadModuleInterface>();
+  return offloadMod && offloadMod.getIsTargetDevice();
 }
 
 // Factored out of CUFDeviceFuncTransform.cpp so that cuf-duplicate-device-func
